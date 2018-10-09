@@ -1,3 +1,3 @@
-# friendly-telegram
+# other-shell
 OTHER SHELL FOR UNIX
 
