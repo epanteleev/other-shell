@@ -1,28 +1,17 @@
+#include <assert.h>
+#include<sys/wait.h>
+#include "parser.h"
 #include "signal_handler.h"
 #include "common.h"
-#include <assert.h>
 
-static char current_directory[MAXLINE];
-pid_t shell_pgid;			//shell's process group id
-int shell_terminal,back,redirection;
-
-void shell_prompt()
-{
-    char hostname[1024];
-    gethostname(hostname, sizeof(hostname));
-    printf("\x1b[1;31m%s@%s\x1b[0m$ \x1b[1;35m%s\x1b[0m$ ", getenv("LOGNAME"), hostname, getcwd(current_directory, 1024));
-}
-
-int change_directory(char** args)
-{
+int change_directory(char** args){
     if (args[1] == NULL){
         if(chdir(getenv("HOME"))){
             perror("chdir");
         }
         return EXIT_SUCCESS;
     }
-    if (chdir(args[1]) == -1)
-    {
+    if (chdir(args[1]) == -1){
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
@@ -30,12 +19,12 @@ int change_directory(char** args)
 
 int shell_init()
 {
-    shell_terminal = STDIN_FILENO;back=0;
+    shell_terminal = STDERR_FILENO;
     int interactive = isatty(shell_terminal);
-    if(interactive)
-    {
-        while(tcgetpgrp(shell_terminal) != (shell_pgid=getpgrp()))
+    if(interactive){
+        while(tcgetpgrp(shell_terminal) != (shell_pgid = getpgrp())){
             kill(- shell_pgid,SIGTTIN);
+        }
     }
     signal (SIGINT, SIG_IGN);
     signal (SIGTSTP, SIG_IGN);
@@ -45,19 +34,17 @@ int shell_init()
     if(signal(SIGINT,signal_handler_int)==SIG_ERR){
          perror("Signal not caught!!");
     }
-
     if(signal(SIGCHLD,signal_handler_child)==SIG_ERR){
         perror("signal not caught!!");
     }
 
-    shell_pgid=getpid();
+    shell_pgid = getpid();
     if(setpgid(shell_pgid,shell_pgid)<0)
     {
         perror("Can't make shell a member of it's own process group");
         _exit(1);
     }
     tcsetpgrp(shell_terminal,shell_pgid);
-
     setenv("SHELL", getcwd(current_directory, 1024), 1);
     return EXIT_SUCCESS;
 }
@@ -71,8 +58,7 @@ void file_io(command* cmd)
     if (cmd->file_out != NULL)//write
     {
         fileDescriptor = open(cmd->file_out, O_CREAT | O_TRUNC | O_WRONLY, 0600);
-        if(fileDescriptor == -1)
-        {
+        if(fileDescriptor == -1){
             fprintf(stderr,"File didn't open\n");
             _exit(1);
         }
@@ -82,14 +68,13 @@ void file_io(command* cmd)
     if (cmd->file_in != NULL)//read
     {
         fileDescriptor = open(cmd->file_in, O_RDONLY, 0600);
-        if(fileDescriptor == -1)
-        {
+        if(fileDescriptor == -1){
             fprintf(stderr,"File didn't open\n");
-            kill(getpid(),SIGTERM);
+            _exit(1);
         }
         dup2(fileDescriptor, STDIN_FILENO);
         close(fileDescriptor);
-    };
+    }
 }
 
 void launch_prog(command* cmd)
@@ -101,11 +86,11 @@ void launch_prog(command* cmd)
     }
     if(CURRENT_PID==0)
     {
-        prctl(PR_SET_PDEATHSIG, SIGHUP);		//kill the child when parent dies.(prevents formation of zombie process)
+        //(PR_SET_PDEATHSIG, SIGHUP);		//kill the child when parent dies.(prevents formation of zombie process)
         setpgid(getpid(),getpid());
-        if(cmd->background == 0)
+        if(cmd->background == 0){
             tcsetpgrp(shell_terminal,getpid());
-        /*make the signals for the child as default*/
+        }
         signal (SIGINT, SIG_DFL);
         signal (SIGQUIT, SIG_DFL);
         signal (SIGTSTP, SIG_DFL);
@@ -113,12 +98,10 @@ void launch_prog(command* cmd)
         signal (SIGTTOU, SIG_DFL);
         signal (SIGCHLD, SIG_DFL);
         file_io(cmd);
-        //setenv("parent",getcwd(currentDirectory, 1024),1);
         if (execvp(cmd->tokens[0],cmd->tokens)==-1)
         {
             perror("\x1b[3;31mCommand not found\x1b[3m");
             _exit(1);
-            //raise(SIGTERM);
         }
         _exit(0);
     }
@@ -130,7 +113,6 @@ void launch_prog(command* cmd)
         if(WIFSTOPPED(status)){
             fprintf(stderr,"\nProcess %d received a SIGTSTP signal\n",CURRENT_PID);
         }
-            //remove_process(pid);
         tcsetpgrp(shell_terminal,shell_pgid);
     }else{
         fprintf(stderr,"Process created with PID: %d\n",CURRENT_PID);
@@ -138,205 +120,91 @@ void launch_prog(command* cmd)
     fflush(stdout);
 }
 
-void command_clear(command* cmd){
-    cmd->file_in = NULL;
-    cmd->file_out = NULL;
-    cmd->numtokens = 0;
-}
-void pipe_handler(command* cmd)
+int piped_execute( command head[])
 {
-    if(cmd == NULL)
+    int pnum = 30;
+    int p=0,i,j=pnum-1,pgid,pipes[2*(pnum-1)],comc=0;
+    for(i=0;j--;i+=2)
     {
-        abort();
+        if((pipe(pipes+i))<0)
+        {
+            perror("pipe error");
+            return -1;
+        }
     }
-    int filedes[2]; // pos. 0 output, pos. 1 input of the pipe
-    int filedes2[2];
-    int end = 0;
-
-    // Переменные, используемые для разных циклов
-    int i = 0;
-
-    int l = 0;
-    // вычисляем количество команд
-    int size_commands = 0;
-    while (cmd->tokens[l] != NULL)
+    //signal (SIGCHLD, SIG_IGN);
+    command *temp=head;
+    while(temp!=NULL && temp->numtokens != 0)
     {
-        if (strcmp(cmd->tokens[l],"|") == 0){
-            size_commands++;
-        }
-        l++;
-    }
-    size_commands++;
-
-
-    // Основной цикл этого метода. Для каждой команды между '|',
-    // будут сконфигурированы каналы, а стандартный ввод и или вывод будут
-    // заменены
-    int j = 0;
-    int pgid = 0;
-    while (cmd->tokens[j] != NULL && end != 1)
-    {
-        int k = 0;
-        //используем вспомогательный массив указателей для хранения команды
-        //, который будет выполняться на каждой итерации
-        command current;
-        command_clear(&current);
-        while (strcmp(cmd->tokens[j],"|") != 0)
+        int pid=fork();
+        if( temp->next == NULL || temp->next->numtokens == 0)
+            //insert_process(temp->tokens[0],pid,pgid);
+        if(comc==0&&pid!=0)
+            pgid=pid;
+        if(pid!=0)
+            setpgid(pid,pgid);
+        if(pid==0)
         {
-            if (strcmp(cmd->tokens[j],"<") == 0)
-            {
-                if (cmd->tokens[j+1] == NULL ){
-                    fprintf(stderr,"Not enough input arguments\n");
-                    return;
-                }
-                current.file_in = cmd->tokens[j+1];
-                j++;
-
-            }
-            else if (strcmp(cmd->tokens[j],">") == 0)
-            {
-                if (cmd->tokens[j+1] == NULL){
-                    fprintf(stderr,"Not enough input arguments: s.%d in file %s\n",__LINE__, __FILE__);
-                    return;
-                }
-
-                current.file_out = cmd->tokens[j+1];
-                j++;
-                //file_io(cmd->tokens,NULL,cmd->tokens[i+1],0);
-                //return -1;
-            }else{
-                current.tokens[k] = cmd->tokens[j];
-            }
-
-            j++;
-            if (cmd->tokens[j] == NULL)
-            {
-                end = 1;
-                k++;
-                break;
-            }
-            k++;
-        }
-        current.tokens[k] = NULL;
-        j++;
-
-
-        // В зависимости от того, находимся ли мы на итерации или нет, мы
-        // будет устанавливать разные дескрипторы для входов и
-        // вывод. Таким образом, между двумя
-        // итерации, позволяющие подключать входы и выходы
-        // две разные команды.
-        if (i % 2 != 0){
-            if(pipe(filedes)<0){
-               perror("pipe");
-               _exit(-1);
-            }
-        }else{
-            if(pipe(filedes2)<0){
-                perror("pipe");
-                _exit(-1);
-            }
-        }
-
-        CURRENT_PID = fork();
-        if(i == 0 && CURRENT_PID!=0){
-            pgid=CURRENT_PID;
-        }
-                                         // pgid is storing the proces id of child
-        if(CURRENT_PID!=0)
-            setpgid(CURRENT_PID,pgid);
-
-        if(CURRENT_PID == -1)
-        {
-            if (i != size_commands - 1)
-            {
-                if (i % 2 != 0){
-                    close(filedes[1]);
-                }else{
-                    close(filedes2[1]);
-                }
-            }
-            fprintf(stderr,"Child process could not be created\n");
-            break;
-        }
-        if(CURRENT_PID==0)
-        {
-
             signal (SIGINT, SIG_DFL);
             signal (SIGQUIT, SIG_DFL);
             signal (SIGTSTP, SIG_DFL);
             signal (SIGTTIN, SIG_DFL);
             signal (SIGTTOU, SIG_DFL);
             signal (SIGCHLD, SIG_DFL);
-            if (i == 0){
-                dup2(filedes2[1], STDOUT_FILENO);
-            }
-            else if (i == size_commands - 1)
+
+            if(temp->next!=NULL && temp->next->numtokens != 0)
             {
-                if (size_commands % 2 != 0){
-                    dup2(filedes[0],STDIN_FILENO);
-                }else{
-                    dup2(filedes2[0],STDIN_FILENO);
+                if((dup2(pipes[2*comc+1],1))<0)
+                {
+                    perror("dup2 error");
                 }
             }
-            else
+            file_io(temp);
+            if(comc!=0)
             {
-                //printf("HERE656bb\n");
-                if (i % 2 != 0){
-                    dup2(filedes2[0],STDIN_FILENO);
-                    dup2(filedes[1],STDOUT_FILENO);
-                }else{
-                    dup2(filedes[0],STDIN_FILENO);
-                    dup2(filedes2[1],STDOUT_FILENO);
+                if((dup2(pipes[2*(comc-1)],0))<0)
+                {
+                    perror("dup2 error");
                 }
             }
-            file_io(&current);
-            if (execvp(current.tokens[0],current.tokens) == -1)
-            {
-                perror("Call execvp");
-                _exit(1);
+            for(i=0;i<2*(pnum-1);i++)
+                close(pipes[i]);
+            if((execvp(temp->tokens[0],temp->tokens))<0){
+                perror("Cannot ececute");
+                _exit(-1);
             }
             _exit(0);
         }
-
-        if (i == 0)
+        else if(pid<0)
         {
-            close(filedes2[1]);
+            perror("Could not fork child");
+            return -1;
         }
-        else if (i == size_commands - 1)
+        temp=temp->next;
+        if(temp!=NULL && temp->numtokens != 0)
         {
-            if (size_commands % 2 != 0){
-                close(filedes[0]);
-            } else{
-                close(filedes2[0]);
-            }
+            comc++;
         }
-        else
-        {
-            if (i % 2 != 0){
-                close(filedes2[0]);
-                close(filedes[1]);
-            }else{
-                close(filedes[0]);
-                close(filedes2[1]);
-            }
-        }
-
-        i++;
     }
-    tcsetpgrp(shell_terminal,pgid);						//set the terminal control to child
-    for(int i=0;i<size_commands;i++)
+
+    for(i=0;i<2*(pnum-1);i++)
     {
-        int status;
-        waitpid(-pgid,&status,WUNTRACED);
-        if(WIFSTOPPED(status)){
-            fprintf(stderr,"Process created with PID: %d\n",CURRENT_PID);
-        }
-        //else
-        //	killpg(pgid,SIGSTOP);
+        close(pipes[i]);							//close all pipes in parent
     }
-    tcsetpgrp(shell_terminal,shell_pgid);
-
+    if(head->background==0)
+    {
+        tcsetpgrp(shell_terminal,pgid);
+        for(i=0;i<comc;i++)
+        {
+            int status;
+            //int ppp;
+            //ppp=waitpid(-1,&status,WUNTRACED);
+            wait(&status);
+        }
+        tcsetpgrp(shell_terminal,getpid());
+    }
+    //signal (SIGCHLD, SIG_DFL);
+    return p;
 }
 
 int launch_stopped_prog(char* pid_)
@@ -356,7 +224,6 @@ int launch_stopped_prog(char* pid_)
     {
         return EXIT_FAILURE;
     }
-    //setpgid(getpid(),CURRENT_PID);
     tcsetpgrp(shell_terminal,CURRENT_PID);
     int status;
     waitpid(i,&status,WUNTRACED);
@@ -369,7 +236,7 @@ int launch_stopped_prog(char* pid_)
 
 int command_handler(command* cmd)
 {
-    if(cmd == NULL || cmd->tokens[0] == NULL ){
+    if(cmd == NULL || cmd->numtokens == 0 ){
         return -1;
     }
     if(strcmp(cmd->tokens[0],EXIT_COMMAND) == 0){
@@ -389,116 +256,48 @@ int command_handler(command* cmd)
         }
         return -1;
     }
-    for (int i = 0; i < cmd->numtokens; i++)
+    else if (cmd->next != NULL && cmd->next->numtokens != 0)
     {
-        if (strcmp(cmd->tokens[i],"|") == 0){
-            pipe_handler(cmd);
-            return -1;
-        }
+        piped_execute(cmd);
+    }else{
+        launch_prog(cmd);
     }
-    for (int i = 0; i < cmd->numtokens; i++)
-    {
-        if (strcmp(cmd->tokens[i],"<") == 0)
-        {
-            if (cmd->tokens[i+1] == NULL ){
-                fprintf(stderr,"Not enough input arguments\n");
-                return -1;
-            }
-            cmd->file_in = cmd->tokens[i+1];
-            cmd->tokens[i] = NULL;
-            cmd->tokens[i+1] = NULL;
-            cmd->numtokens = cmd->numtokens - 2;
-        }
-        else if (strcmp(cmd->tokens[i],">") == 0)
-        {
-            if (cmd->tokens[i+1] == NULL){
-                fprintf(stderr,"Not enough input arguments: s.%d in file %s\n",__LINE__, __FILE__);
-                return -1;
-            }
-
-            cmd->file_out = cmd->tokens[i+1];
-            cmd->tokens[i] = NULL;
-            cmd->tokens[i + 1] = NULL;
-            cmd->numtokens = cmd->numtokens - 2;
-        }
-    }
-
-    launch_prog(cmd);
-
     return -1;
 }
 
-char* get_next_tokens(char* line, command* cmd)
-{
-    if(line == NULL){
-        return NULL;
-    }
-    char* buff_line = line;
-    char* ret;
-    if((ret = strchr(line, ';')) != NULL)
-    {
-        buff_line = strtok(line, ";");
-        ret = strtok(NULL, "");
-    }
-    if ((cmd->tokens[0] = strtok(buff_line, " \n\t")) == NULL)
-    {
-        return 0;
-    }
-    int numTokens = 1;
-    while ((cmd->tokens[numTokens] = strtok(NULL, " \n\t")) != NULL)
-    {
-        numTokens++;
-        if(numTokens == LIMIT)
-        {
-            fprintf(stderr,"Word limit is exceeded\n");
-            break;
-        }
-    }
-    cmd->numtokens = numTokens;
-    if(strcmp(cmd->tokens[numTokens-1],"&") == 0){
-        cmd->background = 1;
-        cmd->tokens[numTokens-1] = NULL;
-        cmd->numtokens--;
-    }else {
-        cmd->background = 0;
-    }
-    cmd->file_in = NULL;
-    cmd->file_out = NULL;
-    return ret;
-}
+
 
 int get_line(char *line, size_t __n)
 {
-    if(fgets(line, __n, stdin)< 0){
-        fprintf(stderr, "err\n");
+    if(fgets(line, __n, stdin) == 0){
+        return -1;
     }
     return 0;
 }
 
 int main(int argc, char *argv[], char ** envp)
 {
+  //  setbuf(stdout,NULL);
     if(shell_init() != 0){
-        abort();
+        return -1;
     }
     command cmd;
+    initial_parser(&cmd);
     char line[MAXLINE];
-    NO_PRINT = 0;
     CURRENT_PID = -10;
     while (1){
-        if (NO_PRINT == 0){
-            shell_prompt();
-        }
-        NO_PRINT = 0;
-        memset(line, '\0', MAXLINE);
+        shell_prompt();
+        memset(line, 0, MAXLINE);
         get_line(line, MAXLINE);
         char* current_pos = line;
         while(current_pos != NULL){
-          //  printf("hhfh\n");
             current_pos = get_next_tokens(current_pos,&cmd);
             if(!command_handler(&cmd)){
                 return EXIT_SUCCESS;
             }
         }
     }
+
+    reset_parser(&cmd);
     return EXIT_SUCCESS;
 }

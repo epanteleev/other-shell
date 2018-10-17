@@ -5,7 +5,6 @@
 
 void signal_handler_child(int p);
 void signal_handler_int(int p);
-void signal_handler_hup(int p);
-void signal_handler_tstp(int p );
-void signal_handler_quit(int p);
+
+void shell_prompt();
 #endif //SIGNAL_HANDLER_H

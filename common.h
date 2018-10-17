@@ -10,10 +10,6 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <termios.h>
-#include <stdbool.h>
-#include <sys/prctl.h>
-pid_t CURRENT_PID;
-int NO_PRINT;
 
 #define LIMIT 255
 #define MAXLINE 1024
@@ -23,13 +19,11 @@ int NO_PRINT;
 #define OUTPUT 1
 #define INPUT 0
 
-typedef struct command_
-{
-    char* tokens[LIMIT];
-    size_t numtokens;
-    char* file_in;
-    char* file_out;
-    unsigned char background;
-}command;
+pid_t CURRENT_PID;
+
+
+char current_directory[MAXLINE];
+pid_t shell_pgid;
+int shell_terminal,redirection;
 
 #endif //COMMON_H
