@@ -13,17 +13,11 @@
 
 #define LIMIT 255
 #define MAXLINE 1024
+
 #define FILE_FORMAT ".sh"
 #define EXIT_COMMAND "exit"
-
-#define OUTPUT 1
-#define INPUT 0
-
-pid_t CURRENT_PID;
-
-
-char current_directory[MAXLINE];
-pid_t shell_pgid;
-int shell_terminal,redirection;
+#define CD_COMMAND "cd"
+#define LAUNCH_STOP_PRCS "fg"
+#define JOBS "jobs"
 
 #endif //COMMON_H

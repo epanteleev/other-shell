@@ -9,7 +9,8 @@ set(SOURCES signal_handler.c
             signal_handler.h
             parser.c
             parser.h
-
+            process_list.c
+            process_list.h
             common.h)
 
 add_executable(other_shell main.c  ${SOURCES})

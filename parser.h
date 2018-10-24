@@ -15,10 +15,18 @@ typedef struct command
     struct command* next;
 }command;
 
-void initial_parser(command* head);
-char* get_next_tokens(char* line, command* head);
+typedef struct command_list
+{
+    command* cmd;
+    size_t sizelist;
+}command_list;
+
+void initial_parser(command_list* head);
+
+char* get_next_tokens(char* line, command_list* head);
 
 void command_clear(command* cmd);
 
-void reset_parser(command* head);
+void reset_parser(command_list* head);
+
 #endif
