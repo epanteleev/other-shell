@@ -5,4 +5,8 @@
 
 void signal_handler_child(int p);
 
+int lock_sigchld(sigset_t* set);
+
+int unlock_sigchld(sigset_t* set);
+
 #endif //SIGNAL_HANDLER_H

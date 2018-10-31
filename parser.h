@@ -11,7 +11,6 @@ typedef struct command
     size_t numtokens;
     char* file_in;
     char* file_out;
-    unsigned char background;
     struct command* next;
 }command;
 
@@ -19,6 +18,7 @@ typedef struct command_list
 {
     command* cmd;
     size_t sizelist;
+    unsigned char background;
 }command_list;
 
 void initial_parser(command_list* head);

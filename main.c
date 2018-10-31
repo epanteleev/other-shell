@@ -6,15 +6,9 @@
 #include "common.h"
 #include "process_list.h"
 
-int shell_init()
-{
-    int interactive = isatty(STDERR_FILENO);
+int shell_init(){
+   // int interactive = isatty(STDERR_FILENO);
     int shell_pgid = getpid();
-    if(interactive){
-        while(tcgetpgrp(STDERR_FILENO) != shell_pgid){
-            kill(- shell_pgid,SIGTTIN);
-        }
-    }
     signal (SIGINT, SIG_IGN);
     signal (SIGTSTP, SIG_IGN);
     signal (SIGQUIT, SIG_IGN);
@@ -22,12 +16,13 @@ int shell_init()
     signal (SIGTTOU, SIG_IGN);
     if(signal(SIGCHLD,signal_handler_child)==SIG_ERR){
         perror("signal not caught!!");
+        return EXIT_FAILURE;
     }
 
     shell_pgid = getpid();
     if(setpgid(shell_pgid,shell_pgid) == -1){
         perror("Can't make shell a member of it's own process group");
-        _exit(1);
+        return EXIT_FAILURE;
     }
     tcsetpgrp(STDERR_FILENO,shell_pgid);
     return EXIT_SUCCESS;
@@ -50,6 +45,7 @@ void shell_prompt(){
     char hostname[1024];
     char current_directory[1024];
     gethostname(hostname, sizeof(hostname));
+
     fprintf(stderr,"\x1b[1;31m%s@%s\x1b[0m$ \x1b[1;35m%s\x1b[0m$ ", getenv("LOGNAME"), hostname, getcwd(current_directory, 1024));
 }
 
@@ -90,7 +86,6 @@ int waiting(process_list* process,size_t num_process, pid_t pgid){
             if(p == pgid)
             fprintf(stderr,"\nProcess %d received a SIGTSTP signal\n",p);
         }else {
-            //fprintf(stderr,"\nProcess %d \n",p);
             process_list_remove(process,p);
         }
     }
@@ -109,34 +104,29 @@ void launch_prog(command_list* head, process_list* process){
         return;
     }
     if(pid == 0){
-        setpgid(getpid(),getpid());
-        if(cmd->background == 0){
-            tcsetpgrp(STDERR_FILENO,getpid());
-        }
         signal (SIGINT, SIG_DFL);
         signal (SIGQUIT, SIG_DFL);
         signal (SIGTSTP, SIG_DFL);
         signal (SIGTTIN, SIG_DFL);
         signal (SIGTTOU, SIG_DFL);
         signal (SIGCHLD, SIG_DFL);
+        setpgid(getpid(),getpid());
         file_io(cmd);
         if (execvp(cmd->tokens[0],cmd->tokens)==-1){
             perror("\x1b[3;31mCommand not found\x1b[3m");
             _exit(1);
         }
-        _exit(0);
     }
     if(pid != 0){
        process_list_insert(process,1,pid);
     }
-    if (cmd->background == 0){
+    if (head->background == 0){
         tcsetpgrp(STDERR_FILENO,pid);
         int status = 0;
         int p = waitpid(pid,&status,WUNTRACED);
         if(WIFSTOPPED(status) ){
             fprintf(stderr,"\nProcess %d received a SIGTSTP signal\n",p);
         }else {
-            //fprintf(stderr,"\nProcess %d \n",p);
             process_list_remove(process,pid);
         }
         tcsetpgrp(STDERR_FILENO,getpid());
@@ -164,30 +154,16 @@ int piped_execute( command_list* head, process_list* process){
         }
     }
     sigset_t set;
-    if (sigemptyset(&set)) {
-        free(pipes);
-        return -1;
-    }
-    if (sigaddset(&set, SIGCHLD)) {
-        free(pipes);
-        return -1;
-    }
-    if (sigprocmask(SIG_BLOCK, &set, NULL)) {
-        free(pipes);
-        return -1;
-    }
-   // signal (SIGCHLD, SIG_IGN);
+    lock_sigchld(&set);
     command *temp = head->cmd;
     int     pid = -2;
     int     pgid = -2;
     size_t commands = head->sizelist;
-    int back = 0;
     for(size_t i = 0; i < commands; i++)
     {
         pid = fork();
         if( temp->next == NULL || temp->next->numtokens == 0){
             process_list_insert(process,commands,pgid);
-            back = temp->background;
         }
         if(i == 0 && pid != 0){
             pgid = pid;
@@ -195,23 +171,21 @@ int piped_execute( command_list* head, process_list* process){
         if(pid != 0){
             setpgid(pid,pgid);
         }
-        if(pid == 0)
-        {
+        if(pid == 0){
             signal (SIGINT, SIG_DFL);
             signal (SIGQUIT, SIG_DFL);
             signal (SIGTSTP, SIG_DFL);
             signal (SIGTTIN, SIG_DFL);
             signal (SIGTTOU, SIG_DFL);
             signal (SIGCHLD, SIG_DFL);
-
             if(temp->next!=NULL && temp->next->numtokens != 0){
-                if((dup2(pipes[2*i+1],1))<0){
+                if(dup2(pipes[2*i+1],STDOUT_FILENO) == -1){
                     perror("dup2 error");
                 }
             }
             file_io(temp);
             if(i != 0){
-                if(dup2(pipes[2*(i-1)],0) == -1){
+                if(dup2(pipes[2*(i-1)],STDIN_FILENO) == -1){
                     perror("dup2 error");
                 }
             }
@@ -223,9 +197,8 @@ int piped_execute( command_list* head, process_list* process){
                 perror("Cannot execvp");
                 _exit(-1);
             }
-            _exit(0);
         }
-        else if(pid<0){
+        else if(pid < 0){
             perror("Could not fork child");
             free(pipes);
             return -1;
@@ -238,18 +211,18 @@ int piped_execute( command_list* head, process_list* process){
     }
     free(pipes);
         //process_list_print(process);
-    if(back == 0){
+    if(head->background == 0){
         tcsetpgrp(STDERR_FILENO,pgid);
         waiting(process, head->sizelist, pgid);
         tcsetpgrp(STDERR_FILENO,getpid());
+    }else{
+        fprintf(stderr,"Process created with PID: %d\n",pgid);
     }
-    if (sigprocmask(SIG_UNBLOCK, &set, NULL)) {
-        return -1;
-    }
+    unlock_sigchld(&set);
     return 0;
 }
 
-int launch_stopped_prog(process_list* process, char* pid_)
+int launch_stopped_prog(process_list* process, char* pid_, int back)
 {
     if(pid_ == NULL){
         return EXIT_FAILURE;
@@ -260,15 +233,7 @@ int launch_stopped_prog(process_list* process, char* pid_)
         return EXIT_FAILURE;
     }
     sigset_t set;
-    if (sigemptyset(&set)) {
-        return -1;
-    }
-    if (sigaddset(&set, SIGCHLD)) {
-        return -1;
-    }
-    if (sigprocmask(SIG_BLOCK, &set, NULL)) {
-        return -1;
-    }
+    lock_sigchld(&set);
     bp* pgid = process_list_get_pgid(process, pid);
     if(pgid == NULL){
         fprintf(stderr,"dfsfsf\n");
@@ -277,13 +242,14 @@ int launch_stopped_prog(process_list* process, char* pid_)
     if(killpg(pid,SIGCONT) == -1){
         return EXIT_FAILURE;
     }
-     //   process_list_print(process);
-    tcsetpgrp(STDERR_FILENO,pid);
-    waiting(process,pgid->depth,pid);
-    tcsetpgrp(STDERR_FILENO,getpid());
-    if (sigprocmask(SIG_UNBLOCK, &set, NULL)) {
-        return -1;
+    if(back == 0){
+        tcsetpgrp(STDERR_FILENO,pid);
+        waiting(process,pgid->depth,pid);
+        tcsetpgrp(STDERR_FILENO,getpid());
+    }else{
+        fprintf(stderr,"Process created with PID: %d\n",pid);
     }
+    unlock_sigchld(&set);
     return EXIT_SUCCESS;
 }
 
@@ -305,7 +271,14 @@ int command_handler(command_list* head, process_list* process)
     }
     else if (strcmp(cmd->tokens[0],LAUNCH_STOP_PRCS) == 0)
     {
-        if(launch_stopped_prog(process, cmd->tokens[1])){
+        if(launch_stopped_prog(process, cmd->tokens[1], 0 )){
+            fprintf(stderr, "Process is not started\n");
+        }
+        return -1;
+    }
+    else if (strcmp(cmd->tokens[0],"bg") == 0)
+    {
+        if(launch_stopped_prog(process, cmd->tokens[1], 1)){
             fprintf(stderr, "Process is not started\n");
         }
         return -1;
@@ -331,10 +304,10 @@ int get_line(char *line, size_t __n){
     return 0;
 }
 
-int main(int argc, char *argv[], char ** envp)
-{
-    if(shell_init() != 0){
-        return -1;
+int main(int argc, char *argv[], char ** envp){
+    if(shell_init()){
+
+        return EXIT_FAILURE;
     }
     command_list cmd;
     process_list process;

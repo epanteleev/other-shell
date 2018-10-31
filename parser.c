@@ -8,7 +8,6 @@ static void _clear(command* cmd){
     }
     command* curr = cmd;
     while (curr != NULL){
-        curr->background = 0;
         curr->file_in = NULL;
         curr->file_out = NULL;
         curr->numtokens = 0;
@@ -35,7 +34,6 @@ static int _insert_command(command** current)
     new->file_out = NULL;
     new->file_in = NULL;
     new->tokens[LIMIT] = (NULL);
-    new->background = 0;
     *current = (*current)->next;
     return 0;
 }
@@ -76,6 +74,7 @@ char* get_next_tokens(char* line, command_list* head)
     char* list[LIMIT];
     int numTokens = _get_list_tokens(list,line,&ret);
     head->sizelist = 1;
+    head->background = 0;
     if(numTokens == 0){
         head->sizelist = 0;
         return NULL;
@@ -92,7 +91,7 @@ char* get_next_tokens(char* line, command_list* head)
             curr->file_in = list[i+1];
             i++;
         }else if (strcmp(list[i],"&") == 0) {
-            curr->background = 1;
+            head->background = 1;
         }else{
             curr->tokens[curr->numtokens] = list[i];
             curr->numtokens++;
@@ -108,7 +107,7 @@ void initial_parser(command_list* head){
         return;
     }
     head->cmd->next = NULL;
-    head->cmd->background = 0;
+    head->background = 0;
     head->cmd->file_in = NULL;
     head->cmd->file_out = NULL;
     head->sizelist = 0;
