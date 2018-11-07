@@ -6,9 +6,21 @@
 #include "common.h"
 #include "process_list.h"
 
+//# define debug_v(fmtstring)
+
 int shell_init(){
-   // int interactive = isatty(STDERR_FILENO);
-    int shell_pgid = getpid();
+    int interactive = isatty(STDERR_FILENO);
+    int shell_pgid;
+    if(interactive){
+        while (tcgetpgrp(STDERR_FILENO) !=(shell_pgid = getpgrp())) {
+            kill(-shell_pgid,SIGTTIN);
+        }
+    }
+    else{
+        fprintf(stderr, "Could not make the shell interactive.\n");
+        return EXIT_FAILURE;
+    }
+    shell_pgid = getpid();
     signal (SIGINT, SIG_IGN);
     signal (SIGTSTP, SIG_IGN);
     signal (SIGQUIT, SIG_IGN);
@@ -18,8 +30,6 @@ int shell_init(){
         perror("signal not caught!!");
         return EXIT_FAILURE;
     }
-
-    shell_pgid = getpid();
     if(setpgid(shell_pgid,shell_pgid) == -1){
         perror("Can't make shell a member of it's own process group");
         return EXIT_FAILURE;
@@ -92,7 +102,7 @@ int waiting(process_list* process,size_t num_process, pid_t pgid){
     return 0;
 }
 
-void launch_prog(command_list* head, process_list* process){
+void execute(command_list* head, process_list* process){
     if(head == NULL){
         return;
     }
@@ -236,7 +246,6 @@ int launch_stopped_prog(process_list* process, char* pid_, int back)
     lock_sigchld(&set);
     bp* pgid = process_list_get_pgid(process, pid);
     if(pgid == NULL){
-        fprintf(stderr,"dfsfsf\n");
         return EXIT_FAILURE;
     }
     if(killpg(pid,SIGCONT) == -1){
@@ -269,14 +278,14 @@ int command_handler(command_list* head, process_list* process)
         }
         return -1;
     }
-    else if (strcmp(cmd->tokens[0],LAUNCH_STOP_PRCS) == 0)
+    else if (strcmp(cmd->tokens[0],FOREGROUND) == 0)
     {
         if(launch_stopped_prog(process, cmd->tokens[1], 0 )){
             fprintf(stderr, "Process is not started\n");
         }
         return -1;
     }
-    else if (strcmp(cmd->tokens[0],"bg") == 0)
+    else if (strcmp(cmd->tokens[0],BACKGROUND) == 0)
     {
         if(launch_stopped_prog(process, cmd->tokens[1], 1)){
             fprintf(stderr, "Process is not started\n");
@@ -292,7 +301,7 @@ int command_handler(command_list* head, process_list* process)
     {
         piped_execute(head,process);
     }else{
-        launch_prog(head,process);
+        execute(head,process);
     }
     return -1;
 }
@@ -306,7 +315,6 @@ int get_line(char *line, size_t __n){
 
 int main(int argc, char *argv[], char ** envp){
     if(shell_init()){
-
         return EXIT_FAILURE;
     }
     command_list cmd;

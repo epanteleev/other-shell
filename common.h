@@ -17,7 +17,8 @@
 #define FILE_FORMAT ".sh"
 #define EXIT_COMMAND "exit"
 #define CD_COMMAND "cd"
-#define LAUNCH_STOP_PRCS "fg"
+#define FOREGROUND "fg"
+#define BACKGROUND "bg"
 #define JOBS "jobs"
-
+//foreground
 #endif //COMMON_H

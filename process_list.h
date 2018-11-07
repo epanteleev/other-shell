@@ -6,7 +6,7 @@
 #define LENGTH_COMMAND 64
 
 typedef struct bp{
-    size_t   depth;
+    size_t   depth; //количество процессов в группе
     pid_t   pgid;
     struct bp*  next;
 }bp;
@@ -27,5 +27,7 @@ void process_list_destroy(process_list* head);
 
 void process_list_init(process_list* head);
 
+///
+/// \brief process_list_print отладочная функция
 void process_list_print(process_list* head);
 #endif
