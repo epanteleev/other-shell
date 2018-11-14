@@ -6,20 +6,18 @@
 #include "common.h"
 #include "process_list.h"
 
-//# define debug_v(fmtstring)
-
 int shell_init(){
     int interactive = isatty(STDERR_FILENO);
-    int shell_pgid;
-    if(interactive){
-        while (tcgetpgrp(STDERR_FILENO) !=(shell_pgid = getpgrp())) {
-            kill(-shell_pgid,SIGTTIN);
-        }
-    }
-    else{
-        fprintf(stderr, "Could not make the shell interactive.\n");
-        return EXIT_FAILURE;
-    }
+    pid_t shell_pgid;
+//    if(interactive){
+//        while (tcgetpgrp(STDERR_FILENO) !=(shell_pgid = getpgrp())) {
+//            kill(-shell_pgid,SIGTTIN);
+//        }
+//    }
+//    else{
+//        fprintf(stderr, "Could not make the shell interactive.\n");
+//        return EXIT_FAILURE;
+//    }
     shell_pgid = getpid();
     signal (SIGINT, SIG_IGN);
     signal (SIGTSTP, SIG_IGN);
@@ -55,7 +53,6 @@ void shell_prompt(){
     char hostname[1024];
     char current_directory[1024];
     gethostname(hostname, sizeof(hostname));
-
     fprintf(stderr,"\x1b[1;31m%s@%s\x1b[0m$ \x1b[1;35m%s\x1b[0m$ ", getenv("LOGNAME"), hostname, getcwd(current_directory, 1024));
 }
 
@@ -91,7 +88,7 @@ void file_io(command* cmd)
 int waiting(process_list* process,size_t num_process, pid_t pgid){
     for(size_t i = 0;i < num_process;i++){
         int status = 0;
-        int p = waitpid(-pgid,&status,WUNTRACED);
+        pid_t p = waitpid(-pgid,&status,WUNTRACED);
         if(WIFSTOPPED(status) ){
             if(p == pgid)
             fprintf(stderr,"\nProcess %d received a SIGTSTP signal\n",p);
@@ -107,7 +104,7 @@ void execute(command_list* head, process_list* process){
         return;
     }
     command* cmd = head->cmd;
-    int pid = -2;
+    pid_t pid;
     if((pid = fork()) == -1)
     {
         perror("Child process could not be created\n");
@@ -143,14 +140,13 @@ void execute(command_list* head, process_list* process){
     }else{
         fprintf(stderr,"Process created with PID: %d\n",pid);
     }
-    fflush(stdout);
 }
 
 int piped_execute( command_list* head, process_list* process){
     if(head == NULL || process == NULL){
         return -1;
     }
-    int pnum = head->sizelist * 2;
+    size_t pnum = head->sizelist * 2;
     int* pipes = (int*) malloc(sizeof(int)*head->sizelist*2);
     if(pipes == NULL){
         fprintf(stderr, "memory wasn't allocated");
@@ -166,8 +162,8 @@ int piped_execute( command_list* head, process_list* process){
     sigset_t set;
     lock_sigchld(&set);
     command *temp = head->cmd;
-    int     pid = -2;
-    int     pgid = -2;
+    pid_t     pid = -2;
+    pid_t     pgid = -2;
     size_t commands = head->sizelist;
     for(size_t i = 0; i < commands; i++)
     {
@@ -199,7 +195,7 @@ int piped_execute( command_list* head, process_list* process){
                     perror("dup2 error");
                 }
             }
-            for(int k = 0;k < pnum - 2;k++){
+            for(size_t k = 0;k < pnum - 2;k++){
                 close(pipes[k]);
             }
             free(pipes);
@@ -237,7 +233,7 @@ int launch_stopped_prog(process_list* process, char* pid_, int back)
     if(pid_ == NULL){
         return EXIT_FAILURE;
     }
-    int pid = atoi(pid_);
+    pid_t pid = (pid_t)atoi(pid_);
     if(pid == 0){
         perror("Call atoi");
         return EXIT_FAILURE;

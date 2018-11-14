@@ -5,7 +5,6 @@
 #include "common.h"
 #include "stdio.h"
 
-/// elemetn of command_list
 typedef struct command
 {
     char* tokens[LIMIT];
