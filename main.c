@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <sys/wait.h>
+#include <errno.h>
 
 #include "parser.h"
 #include "signal_handler.h"
@@ -9,21 +10,21 @@
 int shell_init(){
     int interactive = isatty(STDERR_FILENO);
     pid_t shell_pgid;
-//    if(interactive){
-//        while (tcgetpgrp(STDERR_FILENO) !=(shell_pgid = getpgrp())) {
-//            kill(-shell_pgid,SIGTTIN);
-//        }
-//    }
-//    else{
-//        fprintf(stderr, "Could not make the shell interactive.\n");
-//        return EXIT_FAILURE;
-//    }
+    if(interactive){
+        while (tcgetpgrp(STDERR_FILENO) !=(shell_pgid = getpgrp())) {
+            kill(-shell_pgid,SIGTTIN);
+        }
+    }
+    else{
+        fprintf(stderr, "Could not make the shell interactive.\n");
+        return EXIT_FAILURE;
+    }
     shell_pgid = getpid();
     signal (SIGINT, SIG_IGN);
     signal (SIGTSTP, SIG_IGN);
     signal (SIGQUIT, SIG_IGN);
-    signal (SIGTTIN, SIG_IGN);
-    signal (SIGTTOU, SIG_IGN);
+    //signal (SIGTTIN, SIG_IGN);
+
     if(signal(SIGCHLD,signal_handler_child)==SIG_ERR){
         perror("signal not caught!!");
         return EXIT_FAILURE;
@@ -32,7 +33,12 @@ int shell_init(){
         perror("Can't make shell a member of it's own process group");
         return EXIT_FAILURE;
     }
-    tcsetpgrp(STDERR_FILENO,shell_pgid);
+   // signal (SIGTTOU, SIG_IGN);
+    if(tcsetpgrp(STDIN_FILENO,shell_pgid) == -1){
+        perror("tcsetpgrp");
+        return EXIT_FAILURE;
+    }
+   // signal (SIGTTOU, SIG_DFL);
     return EXIT_SUCCESS;
 }
 
@@ -48,14 +54,36 @@ int change_directory(char** args){
     }
     return EXIT_SUCCESS;
 }
+static int form_prompt(char* prompt) {
+   // char path[MAXLINE];
+   // char* home;
+    char current_directory[512];
+    char hostname[512];
+    memset(prompt,0,MAXLINE);
+    gethostname(hostname, sizeof(hostname));
+
+    if (snprintf(prompt, MAXLINE,COLOR_RED "%s" "@" "%s" COLOR_VIOLET "%s" COLOR_NONE "~$ ", getenv("LOGNAME"), hostname, getcwd(current_directory, 1024)) <= 0) {
+        fprintf(stderr, "Cannot form prompt.");
+        return 0;
+    }
+
+    return 1;
+}
 
 void shell_prompt(){
     char hostname[1024];
-    char current_directory[1024];
-    gethostname(hostname, sizeof(hostname));
-    fprintf(stderr,"\x1b[1;31m%s@%s\x1b[0m$ \x1b[1;35m%s\x1b[0m$ ", getenv("LOGNAME"), hostname, getcwd(current_directory, 1024));
+    form_prompt(hostname);
+    fprintf(stderr,"%s",hostname);
 }
 
+
+
+//static void shell_prompt() {
+//  char prompt[MAXLINE];
+//  if (!form_prompt(prompt))
+//    exit(-1);
+//  write(STDOUT_FILENO, prompt, strlen(prompt));
+//}
 void file_io(command* cmd)
 {
     if(cmd == NULL){
@@ -89,9 +117,10 @@ int waiting(process_list* process,size_t num_process, pid_t pgid){
     for(size_t i = 0;i < num_process;i++){
         int status = 0;
         pid_t p = waitpid(-pgid,&status,WUNTRACED);
-        if(WIFSTOPPED(status) ){
-            if(p == pgid)
-            fprintf(stderr,"\nProcess %d received a SIGTSTP signal\n",p);
+        if(WIFSTOPPED(status)){
+            if(p == pgid){
+                fprintf(stderr,"\nProcess %d received a SIGTSTP signal\n",p);
+            }
         }else {
             process_list_remove(process,p);
         }
@@ -117,10 +146,10 @@ void execute(command_list* head, process_list* process){
         signal (SIGTTIN, SIG_DFL);
         signal (SIGTTOU, SIG_DFL);
         signal (SIGCHLD, SIG_DFL);
-        setpgid(getpid(),getpid());
+        setpgid(0,0);
         file_io(cmd);
         if (execvp(cmd->tokens[0],cmd->tokens)==-1){
-            perror("\x1b[3;31mCommand not found\x1b[3m");
+            perror( COLOR_YELLOW "Command not found" COLOR_ALL_STRING);
             _exit(1);
         }
     }
@@ -128,7 +157,12 @@ void execute(command_list* head, process_list* process){
        process_list_insert(process,1,pid);
     }
     if (head->background == 0){
-        tcsetpgrp(STDERR_FILENO,pid);
+        signal (SIGTTOU, SIG_IGN);
+        if(tcsetpgrp(STDIN_FILENO,pid) == -1){
+            perror("tcsetpgrp");
+            return;
+        }
+        signal (SIGTTOU, SIG_DFL);
         int status = 0;
         int p = waitpid(pid,&status,WUNTRACED);
         if(WIFSTOPPED(status) ){
@@ -136,7 +170,12 @@ void execute(command_list* head, process_list* process){
         }else {
             process_list_remove(process,pid);
         }
-        tcsetpgrp(STDERR_FILENO,getpid());
+        signal (SIGTTOU, SIG_IGN);
+        if(tcsetpgrp(STDIN_FILENO,getpid()) == -1){
+            perror("tcsetpgrp");
+            return;
+        }
+        signal (SIGTTOU, SIG_DFL);
     }else{
         fprintf(stderr,"Process created with PID: %d\n",pid);
     }
@@ -218,9 +257,19 @@ int piped_execute( command_list* head, process_list* process){
     free(pipes);
         //process_list_print(process);
     if(head->background == 0){
-        tcsetpgrp(STDERR_FILENO,pgid);
+        //signal (SIGTTOU, SIG_IGN);
+        if(tcsetpgrp(STDIN_FILENO,pgid) == -1){
+            perror("tcsetpgrp");
+            return -1;
+        }
+        //signal (SIGTTOU, SIG_DFL);
         waiting(process, head->sizelist, pgid);
-        tcsetpgrp(STDERR_FILENO,getpid());
+        signal (SIGTTOU, SIG_IGN);
+        if(tcsetpgrp(STDIN_FILENO,getpid()) == -1){
+            perror("tcsetpgrp");
+            return -1;
+        }
+        signal (SIGTTOU, SIG_DFL);
     }else{
         fprintf(stderr,"Process created with PID: %d\n",pgid);
     }
@@ -248,9 +297,17 @@ int launch_stopped_prog(process_list* process, char* pid_, int back)
         return EXIT_FAILURE;
     }
     if(back == 0){
-        tcsetpgrp(STDERR_FILENO,pid);
+        if(tcsetpgrp(STDIN_FILENO,pid) == -1){
+            perror("tcsetpgrp");
+            return -1;
+        }
         waiting(process,pgid->depth,pid);
-        tcsetpgrp(STDERR_FILENO,getpid());
+        signal (SIGTTOU, SIG_IGN);
+        if(tcsetpgrp(STDIN_FILENO,getpid()) == -1){
+            perror("tcsetpgrp");
+            return -1;
+        }
+        signal (SIGTTOU, SIG_DFL);
     }else{
         fprintf(stderr,"Process created with PID: %d\n",pid);
     }
@@ -302,12 +359,28 @@ int command_handler(command_list* head, process_list* process)
     return -1;
 }
 
-int get_line(char *line, size_t __n){
-    if(fgets(line, __n, stdin) == 0){
-        return -1;
-    }
-    return 0;
+char* get_line(char *line, size_t __n){
+    return fgets(line, __n, stdin);
 }
+#ifdef EDITOR_ON
+static void shell_add_history(char* cmd) {
+if(cmd == NULL){
+    return;
+}
+  HIST_ENTRY* tmp = previous_history();
+  if (!tmp) {
+    add_history(cmd);
+    return;
+  }
+
+  if (!strcmp(tmp->line, cmd)) {
+    tmp = remove_history(where_history());
+    free_history_entry(tmp);
+  }
+
+  add_history(cmd);
+}
+#endif
 
 int main(int argc, char *argv[], char ** envp){
     if(shell_init()){
@@ -318,12 +391,19 @@ int main(int argc, char *argv[], char ** envp){
     initial_parser(&cmd);
     process_list_init(&process);
     char    line[MAXLINE];
+    char    prm[MAXLINE*2];
     int     end = 1;
     while (end){
-        shell_prompt();
         memset(line, 0, MAXLINE);
-        get_line(line, MAXLINE);
-        char* current_pos = line;
+#ifdef EDITOR_ON
+        form_prompt(prm);
+        char* res = readline(prm);
+        shell_add_history(res);
+#else
+        shell_prompt();
+        char * res = get_line(line, MAXLINE);
+#endif
+        char* current_pos = res;
         while(current_pos != NULL){
             current_pos = get_next_tokens(current_pos,&cmd);
             if(!command_handler(&cmd, &process)){
@@ -331,7 +411,13 @@ int main(int argc, char *argv[], char ** envp){
                 break;
             }
         }
+        #ifdef EDITOR_ON
+        free(res);
+#endif
     }
+#ifdef EDITOR_ON
+        clear_history();
+#endif
     reset_parser(&cmd);
     process_list_destroy(&process);
     return EXIT_SUCCESS;

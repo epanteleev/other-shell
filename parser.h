@@ -1,9 +1,7 @@
 #ifndef PARSER_H
 #define PARSER_H
-#include <string.h>
 
 #include "common.h"
-#include "stdio.h"
 
 typedef struct command
 {

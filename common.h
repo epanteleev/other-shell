@@ -1,6 +1,9 @@
 #ifndef COMMON_H
 #define COMMON_H
-//#define __GNUG__
+
+#define COLOR_ON
+//#define EDITOR_ON
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -11,6 +14,14 @@
 #include <fcntl.h>
 #include <termios.h>
 
+#ifdef EDITOR_ON
+#warning only linux
+#include"readline/readline.h"
+#include "readline/history.h"
+#endif
+
+
+
 #define LIMIT 255
 #define MAXLINE 1024
 
@@ -20,5 +31,32 @@
 #define FOREGROUND "fg"
 #define BACKGROUND "bg"
 #define JOBS "jobs"
-//foreground
+
+
+
+#ifdef COLOR_ON
+#define COLOR_NONE "\033[m"
+#define COLOR_YELLOW "\033[1;33m"
+#define COLOR_CYAN "\033[0;36m"
+#define COLOR_GREEN "\033[0;32;32m"
+#define COLOR_GRAY "\033[1;30m"
+#define COLOR_RED "\x1b[1;31m"
+#define COLOR_VIOLET "\x1b[1;35m"
+#define COLOR_ALL_STRING "\x1b[3m"
+#else
+#define COLOR_NONE
+#define COLOR_RED
+#define COLOR_YELLOW
+#define COLOR_CYAN
+#define COLOR_GREEN
+#define COLOR_GRAY
+#define COLOR_RED
+#define COLOR_VIOLET
+#define COLOR_ALL_STRING
+#endif
+
+#define VERSION_NUM "0.0.1"
+
+
+
 #endif //COMMON_H
