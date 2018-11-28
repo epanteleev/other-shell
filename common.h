@@ -15,7 +15,6 @@
 #include <termios.h>
 
 #ifdef EDITOR_ON
-#warning only linux
 #include"readline/readline.h"
 #include "readline/history.h"
 #endif

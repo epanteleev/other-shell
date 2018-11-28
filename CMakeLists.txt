@@ -7,13 +7,13 @@ add_definitions("-Wall ")
 
 include_directories(readline/)
 #add_subdirectory(readline)
-set(SOURCES signal_handler.c
-            signal_handler.h
-            parser.c
+set(SOURCES parser.c
             parser.h
             process_list.c
             process_list.h
-            common.h)
+            common.h
+            execute.c
+            execute.h)
 
 add_executable(other_shell main.c  ${SOURCES})
 target_link_libraries(other_shell -lreadline )
