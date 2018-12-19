@@ -7,6 +7,13 @@
 #include "process_list.h"
 #include "execute.h"
 
+void child(){
+    int status;
+    pid_t pid;
+    //perror("sfsfds");
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {}
+}
+
 int shell_init(){
     int interactive = isatty(STDIN_FILENO);
     pid_t shell_pgid;
@@ -25,20 +32,23 @@ int shell_init(){
         return EXIT_FAILURE;
     }
     signal (SIGINT, SIG_IGN);
-    signal (SIGTSTP, SIG_DFL);
+    signal (SIGTSTP, SIG_IGN);
     signal (SIGQUIT, SIG_IGN);
-    signal (SIGCHLD, SIG_IGN);
-
-    if(setpgid(0,0) == -1){
+    signal (SIGCHLD, SIG_DFL);
+    signal (SIGTTIN, SIG_DFL);
+/*
+    if(setpgid(getpid(),getpid()) == -1){
         perror("Can't make shell a member of it's own process group");
         return EXIT_FAILURE;
     }
+*/
     signal (SIGTTOU, SIG_IGN);
-    if(tcsetpgrp(STDIN_FILENO,getpgid(0)) == -1){
+    if(tcsetpgrp(STDIN_FILENO,getpgrp()) == -1){
         perror("tcsetpgrp");
         return EXIT_FAILURE;
     }
     signal (SIGTTOU, SIG_DFL);
+    chdir(getenv("HOME"));
     return EXIT_SUCCESS;
 }
 
@@ -55,27 +65,17 @@ int change_directory(char** args){
     return EXIT_SUCCESS;
 }
 static int form_prompt(char* prompt) {
-    char current_directory[512];
-    char hostname[512];
+    //char current_directory[512];
+    //char hostname[512];
     memset(prompt,0,MAXLINE);
-    gethostname(hostname, sizeof(hostname));
+   // gethostname(hostname, sizeof(hostname));
 
-    if (snprintf(prompt, MAXLINE,COLOR_RED "%s" "@" "%s" COLOR_VIOLET "%s" COLOR_NONE "~$ ", getenv("LOGNAME"), hostname, getcwd(current_directory, 1024)) <= 0) {
+    if (snprintf(prompt, MAXLINE,COLOR_RED "%s" COLOR_NONE "~$ ", getenv("LOGNAME")) <= 0) {
         fprintf(stderr, "Cannot form prompt.");
         return 0;
     }
-
     return 1;
 }
-void child()
-{
-    int status;
-    pid_t pid;
-    //perror("sfsfds");
-    while ((pid = waitpid(-1, &status, WNOHANG|WUNTRACED|WCONTINUED)) > 0) {
-    }
-}
-
 
 void shell_prompt(){
     char hostname[1024];
@@ -128,27 +128,9 @@ int command_handler(command_list* head, process_list* process)
 }
 
 char* get_line(char *line, size_t __n){
-    return fgets(line, __n, stdin);
+    char* i = fgets(line, __n, stdin);
+    return i;
 }
-#ifdef EDITOR_ON
-static void shell_add_history(char* cmd) {
-if(cmd == NULL){
-    return;
-}
-  HIST_ENTRY* tmp = previous_history();
-  if (!tmp) {
-    add_history(cmd);
-    return;
-  }
-
-  if (!strcmp(tmp->line, cmd)) {
-    tmp = remove_history(where_history());
-    free_history_entry(tmp);
-  }
-
-  add_history(cmd);
-}
-#endif
 
 int main(int argc, char *argv[], char ** envp){
     if(shell_init()){
@@ -163,14 +145,12 @@ int main(int argc, char *argv[], char ** envp){
     int     end = 1;
     while (end){
         memset(line, 0, MAXLINE);
-#ifdef EDITOR_ON
-        form_prompt(prm);
-        char* res = readline(prm);
-        shell_add_history(res);
-#else
         shell_prompt();
         char * res = get_line(line, MAXLINE);
-#endif
+        if(res == NULL){
+            fprintf(stderr,"\n");
+            break;
+        }
         char* current_pos = res;
         while(current_pos != NULL){
             current_pos = get_next_tokens(current_pos,&cmd);
@@ -180,13 +160,7 @@ int main(int argc, char *argv[], char ** envp){
             }
         }
         child();
-#ifdef EDITOR_ON
-        free(res);
-#endif
     }
-#ifdef EDITOR_ON
-        clear_history();
-#endif
     reset_parser(&cmd);
     process_list_destroy(&process);
     return EXIT_SUCCESS;
