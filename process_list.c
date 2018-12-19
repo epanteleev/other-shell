@@ -21,7 +21,7 @@ int process_list_insert(process_list*head,size_t depth,pid_t pgid)
 
 static bp* ReturnPrevious(bp* first, bp* current)
 {
-    bp* ptr = first;
+    bp * restrict ptr = first;
     while (ptr->next != current){
         ptr = ptr->next;
     }
@@ -33,7 +33,7 @@ static bp* slist_find(bp* haystack, pid_t needle)///////////////
     if (haystack == NULL ){
         return NULL;
     }
-    bp* ptr = haystack;
+    bp* restrict ptr = haystack;
     while (ptr!= NULL){
         if (ptr->pgid == needle){
             return ptr;
@@ -62,8 +62,8 @@ bp * process_list_remove(process_list* head, pid_t data)
         free(current);
     }
     else{
-        bp*prev = ReturnPrevious(list, current);
-        bp*elm = prev->next;
+        bp* restrict prev = ReturnPrevious(list, current);
+        bp* restrict elm = prev->next;
         prev->next = elm->next;
         head->prs = prev;
         free(current);
@@ -76,7 +76,7 @@ bp* process_list_get_pgid(process_list* head, pid_t pgid){
     if(head == NULL){
         return NULL;
     }
-    bp* curr = head->prs;
+    bp* restrict curr = head->prs;
     while( curr!= NULL){
         if(curr->pgid == pgid){
             return curr;
@@ -95,7 +95,7 @@ void process_list_init(process_list* head){
 }
 
 void process_list_destroy(process_list* head){
-    bp* curr = head->prs;
+    bp* restrict curr = head->prs;
     while (curr != NULL) {
         bp* l = curr->next;
         free(curr);
@@ -103,7 +103,7 @@ void process_list_destroy(process_list* head){
     }
 }
 void process_list_print(process_list* head){
-    bp* curr = head->prs;
+    bp* restrict curr = head->prs;
     while (curr != NULL) {
         fprintf(stderr,"pgid=%d depth= %ld"
                        "\n",curr->pgid,curr->depth);
