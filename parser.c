@@ -11,13 +11,12 @@ static void _clear(command* cmd){
         curr->file_in = NULL;
         curr->file_out = NULL;
         curr->numtokens = 0;
-        curr->tokens[LIMIT] = (NULL);
+        curr->tokens[LIMIT-1] = (NULL);
         curr = curr->next;
     }
 }
 
-static int _insert_command(command** current)
-{
+static int _insert_command(command** current){
     command* new = NULL;
     (*current)->tokens[(*current)->numtokens] = NULL;
     if((*current)->next == NULL ){
@@ -33,29 +32,25 @@ static int _insert_command(command** current)
     }
     new->file_out = NULL;
     new->file_in = NULL;
-    new->tokens[LIMIT] = (NULL);
+    new->tokens[LIMIT-1] = (NULL);
     *current = (*current)->next;
     return 0;
 }
 
-static int _get_list_tokens(char** tokens, char* line, char** current_pos){
+static size_t _get_list_tokens(char** tokens, char* line, char** current_pos){
     char* buff_line = line;
-    if((*current_pos = strchr(line, ';')) != NULL)
-    {
+    if((*current_pos = strchr(line, ';')) != NULL){
         buff_line = strtok(line, ";");
         *current_pos = strtok(NULL, "");
     }
 
-    if ((tokens[0] = strtok(buff_line, " \n\t")) == NULL)
-    {
+    if ((tokens[0] = strtok(buff_line, " \n\t")) == NULL){
         return 0;
     }
-    int numTokens = 1;
-    while ((tokens[numTokens] = strtok(NULL, " \n\t")) != NULL)
-    {
+    size_t numTokens = 1;
+    while ((tokens[numTokens] = strtok(NULL, " \n\t")) != NULL){
         numTokens++;
-        if(numTokens == LIMIT)
-        {
+        if(numTokens == LIMIT){
             fprintf(stderr,"Word limit is exceeded\n");
             break;
         }
@@ -63,8 +58,7 @@ static int _get_list_tokens(char** tokens, char* line, char** current_pos){
     return numTokens;
 }
 
-char* get_next_tokens(char* line, command_list* head)
-{
+char* get_next_tokens(char* line, command_list* head){
     if(line == NULL || head->cmd == NULL){
         return NULL;
     }
@@ -72,7 +66,7 @@ char* get_next_tokens(char* line, command_list* head)
 
     char* ret = NULL;
     char* list[LIMIT];
-    int numTokens = _get_list_tokens(list,line,&ret);
+    size_t numTokens = _get_list_tokens(list,line,&ret);
     head->sizelist = 1;
     head->background = 0;
     if(numTokens == 0){

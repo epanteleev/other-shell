@@ -2,7 +2,6 @@
 #define COMMON_H
 
 #define COLOR_ON
-//#define EDITOR_ON
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,14 +12,6 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <termios.h>
-
-#ifdef EDITOR_ON
-#warning only linux
-#include"readline/readline.h"
-#include "readline/history.h"
-#endif
-
-
 
 #define LIMIT 255
 #define MAXLINE 1024
@@ -36,7 +27,7 @@
 
 #ifdef COLOR_ON
 #define COLOR_NONE "\033[m"
-#define COLOR_YELLOW "\033[1;33m"
+#define COLOR_YELLOW "\033[0;33m"
 #define COLOR_CYAN "\033[0;36m"
 #define COLOR_GREEN "\033[0;32;32m"
 #define COLOR_GRAY "\033[1;30m"

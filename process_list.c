@@ -1,39 +1,40 @@
 #include "process_list.h"
 
-int process_list_insert(process_list*head,size_t depth,pid_t pgid)
-{
+static size_t current_id = 0;
+
+size_t process_list_insert(process_list*head,size_t depth,pid_t pgid){
     if(head == NULL){
-        return -2;
+        return 0;
     }
-    bp* new = (bp*)malloc(sizeof(bp));
+    jobs* new = (jobs*)malloc(sizeof(jobs));
     if(new == NULL){
-        return -1;
+        return 0;
     }
     new->depth = depth;
     new->pgid = pgid;
-    bp* p = head->prs;
+    current_id++;
+    new->id = current_id;
+    jobs* p = head->prs;
     new->next = p;
     head->prs = new;
 
     head->sizelist++;
-    return 0;
+    return current_id;
 }
 
-static bp* ReturnPrevious(bp* first, bp* current)
-{
-    bp* ptr = first;
+static jobs* ReturnPrevious(jobs* first, jobs* current){
+    jobs* ptr = first;
     while (ptr->next != current){
         ptr = ptr->next;
     }
     return ptr;
 }
 
-static bp* slist_find(bp* haystack, pid_t needle)///////////////
-{
+static jobs* slist_find(jobs* haystack, pid_t needle){
     if (haystack == NULL ){
         return NULL;
     }
-    bp* ptr = haystack;
+    jobs* ptr = haystack;
     while (ptr!= NULL){
         if (ptr->pgid == needle){
             return ptr;
@@ -43,42 +44,42 @@ static bp* slist_find(bp* haystack, pid_t needle)///////////////
     return NULL;
 }
 
-bp * process_list_remove(process_list* head, pid_t data)
-{
-    bp* list = head->prs;
-    bp* current = slist_find(list, data);
+jobs * process_list_remove(process_list* head, pid_t data){
+    jobs* list = head->prs;
+    jobs* current = slist_find(list, data);
     if (current == NULL){
         return NULL;
     }
     else if (list == current){
-        bp* ptr = list->next;
+        jobs* ptr = list->next;
         free(list);
         list = ptr;
         head->prs = list;
     }
     else if (current->next == NULL){
-        bp* prev = ReturnPrevious(list, current);
+        jobs* prev = ReturnPrevious(list, current);
         prev->next = NULL;
         free(current);
     }
     else{
-        bp*prev = ReturnPrevious(list, current);
-        bp*elm = prev->next;
+        jobs*prev = ReturnPrevious(list, current);
+        jobs*elm = prev->next;
         prev->next = elm->next;
         head->prs = prev;
         free(current);
     }
+    current_id--;
     head->sizelist--;
     return list;
 }
 
-bp* process_list_get_pgid(process_list* head, pid_t pgid){
+jobs* process_list_get(process_list* head, size_t id){
     if(head == NULL){
         return NULL;
     }
-    bp* curr = head->prs;
+    jobs* curr = head->prs;
     while( curr!= NULL){
-        if(curr->pgid == pgid){
+        if(curr->id == id){
             return curr;
         }
         curr = curr->next;
@@ -95,18 +96,18 @@ void process_list_init(process_list* head){
 }
 
 void process_list_destroy(process_list* head){
-    bp* curr = head->prs;
+    jobs* curr = head->prs;
     while (curr != NULL) {
-        bp* l = curr->next;
+        jobs* l = curr->next;
         free(curr);
         curr = l;
     }
 }
 void process_list_print(process_list* head){
-    bp* curr = head->prs;
+    jobs* curr = head->prs;
     while (curr != NULL) {
-        fprintf(stderr,"pgid=%d depth= %ld"
-                       "\n",curr->pgid,curr->depth);
+        fprintf(stderr,"id=%ld pgid=%d"
+                       "\n",curr->id,curr->pgid);
         curr = curr->next;
     }
 }

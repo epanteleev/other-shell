@@ -2,25 +2,14 @@
 #include "common.h"
 
 
-void signal_handler_child(int p)
-{
+void signal_handler_child(int p){
     int status;
     sigset_t set;
 
-    if (sigemptyset(&set)) {
-        return;
-    }
-    if (sigaddset(&set, SIGCHLD)) {
-        return;
-    }
-    if (sigprocmask(SIG_BLOCK, &set, NULL)) {
-        return;
-    }
+    lock_sigchld(&set);
     while(waitpid(-1,&status,WNOHANG)>0){}
 
-    if (sigprocmask(SIG_UNBLOCK, &set, NULL)) {
-        return;
-    }
+    unlock_sigchld(&set);
 }
 
 int lock_sigchld(sigset_t* set){
